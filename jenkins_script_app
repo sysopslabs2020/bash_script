@@ -1,0 +1,99 @@
+#!/bin/bash
+#Author: Luca Santirocchi
+#Version: 1
+
+##################### IMPOSTAZIONI SCRIPT #####################
+FILE_DEPLOY_GEO=$1                                              #### PATH COMPLETO DEL FILE GEOCALL DA DEPLOYARE
+OWNER_FILE="geocall.geocall"                                    #### OWNER CHE AVRANNO I FILE UNA VOLTA DEPLOYATI
+LOG_FILE="/root/deploy_geocall.log"                             #### FILE DI LOG DELLO SCRIPT DI RILASCIO
+PATH_TO_COPY_WAR_GEO="/opt/geocall/tomcat8080/webapps"          #### PATH DOVE VERRA' COPIATO IL FILE .war GEOCALL
+FILE_LOG_TOMCAT_GEO="/opt/geocall/tomcat8080/logs/catalina.out" #### FILE DI LOG DI TOMCAT GEOCALL USATO PER CAPIRE QUANDO L'APPLICAZIONE e' UP
+GEOCALL_PORT="8080"                                             #### PORTA DI ASCOLTO GEOCAL, USATA PER CAPIRE QUANDO L'APPLICAZIONE e' DOWN
+declare -i TIMEOUT="300"                                        #### IMPOSTO IL TIMEOUT DI START PER GEOCALL, SE SUPERATO QUESTO TEMPO ESPRESSO IN SECONDI GEOCALL NON RISULTA RUN, ESCO
+###############################################################
+
+echo "###################################### `date`######################################" | tee -a $LOG_FILE
+
+##### MAIN CHECK #####
+if [ "$1" == "" ]
+then
+        echo "Lanciarre lo script indicando come parametro il percorso completo del file ZIP di cui effettuare il deploy"
+        exit 1
+fi
+
+############ CONTROLLO CHE IL FILE GEOCALL PASSATO DALL'UTENTE ESISTA DAVVERO ##########################
+if [ -e $FILE_DEPLOY_GEO ]
+then
+        echo "$FILE_DEPLOY_GEO : Trovato" | tee -a $LOG_FILE
+        NOMEFILE=`/bin/basename $FILE_DEPLOY_GEO`
+        TYPE_FILE=`echo $NOMEFILE | awk  -F. '{print $NF}'`
+        #### CONTROLLO CHE IL FILE SIA UN .ZIP
+        if [ "$TYPE_FILE" == "zip" ] || [ "$TYPE_FILE" == "ZIP" ]
+        then
+                echo "IL FORMATO DEL FILE e' VALIDO : $TYPE_FILE" | tee -a $LOG_FILE
+        else
+                echo "IL FORMATO DEL FILE NON e' VALIDO, deve essere un .zip" | tee -a $LOG_FILE
+                exit 2
+        fi
+else
+        echo "$FILE_DEPLOY_GEO : Impossibile trovare il file." | tee -a $LOG_FILE
+        echo "uscita ...." | tee -a $LOG_FILE
+        exit 3
+fi
+
+######## CONTROLLO CHE UNZIP SIA PRESENTE ######
+if [ -e /usr/bin/unzip ]
+then
+        echo "UNZIP PRESENTE SUL SERVER" | tee -a $LOG_FILE
+else
+        echo "ATTENZIONE!!! l'unzip non e' presente su questo server !!" | tee -a $LOG_FILE
+        exit 4
+fi
+
+####### STOP GEOCALL SERVICE #####################
+sudo systemctl stop tomcat8080
+wait $!
+####### GEOCALL Check and force terminate if not STOP #########
+PID=$(ps aux | grep tomcat| grep 8080 | awk '{print $2}')
+if [[ "$PID" -gt 0 ]]
+then
+   echo "GEOCALL ancora UP, eseguo il kill del processo" | tee -a $LOG_FILE
+   kill -9 $PID
+fi
+
+######## Rimozione war e dir GEOCALL #################
+rm -r $PATH_TO_COPY_WAR_GEO/geocall*
+
+#### EFFETTUO UNZIP DEL FILE GEOCALL ##############
+/usr/bin/unzip -o $FILE_DEPLOY_GEO -d $PATH_TO_COPY_WAR_GEO > /tmp/file_geo.tmp
+if [ "$?" == "0" ]
+then
+        #### RICAVO IL NOME DEL FILE WAR
+        ### TMP_VAR=`cat /tmp/file_geo.tmp | awk '/inflating/ {print $NF}'`
+        TMP_VAR=`cat /tmp/file_geo.tmp | grep -i .war | awk '/inflating/ {print $NF}'`   #### AGGIUNTO CONTROLLO ESTENSIONE DEL FILE WAR, in questo modo viene catturato solo il file war anche se presenti altri
+        FILE_WAR_GEO=`/bin/basename $TMP_VAR`
+        echo "UNZIP DEL FILE $FILE_DEPLOY_GEO AVVENUTO CON SUCCESSO" | tee -a $LOG_FILE
+else
+        echo "PROBLEMI CON UNZIP DEL FILE $FILE_DEPLOY_GEO ... uscita " | tee -a $LOG_FILE
+        exit 5
+fi
+
+#### CAMBIO OWNER DEL FILE UNZIPPATO ##########
+/bin/chown $OWNER_FILE $PATH_TO_COPY_WAR_GEO/$FILE_WAR_GEO
+
+#### AVVIO NUOVAMENTE GEOCALL ################
+mv $PATH_TO_COPY_WAR_GEO/ternawfm* $PATH_TO_COPY_WAR_GEO/geocall.war
+echo "START DI GEOCALL PER EFFETTUARE IL DEPLOY" | tee -a $LOG_FILE
+sudo systemctl start tomcat8080 | tee -a $LOG_FILE
+
+#### CHECK IF Service is UP #####
+PID=$(ps aux | grep tomcat| grep 8080 | awk '{print $2}')
+#PID="ps aux | grep tomcat| grep 8080 | awk '{print $2}'"
+if [[ "$PID" -gt 0 ]]
+then
+   echo "...Rilascio Eseguito CORRETTAMENTE e GEOCALL UP AND RUNNING..." | tee -a $LOG_FILE
+else
+   echo "Verifica i log, Il servizio NON è startato correttamente..."
+fi
+
+echo "###################################### `date`######################################" | tee -a $LOG_FILE
