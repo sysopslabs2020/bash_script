@@ -1,2 +1,2 @@
 # bash_script
-bash script
+list of some bash script
