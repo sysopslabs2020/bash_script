@@ -1,10 +1,9 @@
 #!/bin/bash
-####
-#Author: Luca Santirocchi
 #Version: 1
-
-###
-This script use Ftp over http connection for downloading file of the day before, on remote Ftp server that allow only ftp protocol
+###################################################################################
+#### This script use Ftp over http connection for downloading
+#### file of the day before from remote Ftp server that allow only ftp protocol
+###################################################################################
 
 DATE=$(date +"%Y%m%d")
 YESTERDAY=$(date --date="yesterday" +"%Y%m%d")
