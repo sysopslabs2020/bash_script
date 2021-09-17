@@ -29,5 +29,11 @@ lftp $URL <<EOF
 
 EOF
 
-#set ftp over http
-#    set ftp:proxy http://user:password@proxy:port
+#set ftp over http from Linux cli use:
+# lftp
+# set ftp:proxy http://user:password@proxy:port
+# open ftp_url
+# USER username
+# password
+# navigate the server and get file
+
